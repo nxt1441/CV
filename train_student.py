@@ -189,8 +189,9 @@ def main():
     alpha = args.alpha if args.alpha else kd["alpha"]
     beta  = kd["beta"]
 
+    label_smoothing = sc.get("label_smoothing", 0.0)
     if args.method in ("baseline_a", "baseline_b"):
-        criterion = nn.CrossEntropyLoss()
+        criterion = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
     elif args.method == "hinton":
         criterion = HintonKDLoss(temperature=T, alpha=alpha)
     elif args.method == "feature":
@@ -200,15 +201,31 @@ def main():
     elif args.method == "rkd":
         criterion = RKDLoss(lambda_d=kd["lambda_d"], lambda_a=kd["lambda_a"])
     elif args.method == "combined":
+        # CE coefficient is (1 - alpha - beta). With the config defaults
+        # (alpha=0.7, beta=0.3) that is 0 -> no hard-label signal -> underfits.
+        # Use a combined-specific alpha so CE keeps a meaningful weight.
+        combined_alpha = args.alpha if args.alpha else 0.5
         criterion = CombinedKDLoss(STUDENT_FEAT_CHANNELS, TEACHER_FEAT_CHANNELS,
-                                   temperature=T, alpha=alpha, beta=beta)
+                                   temperature=T, alpha=combined_alpha, beta=beta)
 
     criterion = criterion.to(device)
 
     # ── optimiser ─────────────────────────────────────────────────────────────
     all_params = list(student.parameters()) + list(criterion.parameters())
     optimizer = torch.optim.AdamW(all_params, lr=sc["lr"], weight_decay=sc["weight_decay"])
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=sc["epochs"])
+
+    # Linear warmup -> cosine decay. Warmup keeps the first few epochs gentle so
+    # the pretrained backbone isn't blown away before it starts adapting.
+    warmup_epochs = sc.get("warmup_epochs", 0)
+    if warmup_epochs > 0:
+        warmup = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=0.01, total_iters=warmup_epochs)
+        cosine = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer, T_max=max(1, sc["epochs"] - warmup_epochs))
+        scheduler = torch.optim.lr_scheduler.SequentialLR(
+            optimizer, [warmup, cosine], milestones=[warmup_epochs])
+    else:
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=sc["epochs"])
     scaler = torch.amp.GradScaler("cuda")
 
     # ── logging ───────────────────────────────────────────────────────────────

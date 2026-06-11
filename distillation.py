@@ -115,6 +115,10 @@ class CombinedKDLoss(nn.Module):
     def __init__(self, student_channels, teacher_channels,
                  temperature=4.0, alpha=0.5, beta=0.3):
         super().__init__()
+        assert alpha + beta < 1.0, (
+            f"alpha+beta must be < 1 to leave weight for the CE term, "
+            f"got alpha={alpha}, beta={beta}"
+        )
         self.T = temperature
         self.alpha = alpha
         self.beta = beta

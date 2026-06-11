@@ -12,9 +12,11 @@ STD  = [0.229, 0.224, 0.225]
 def get_transforms(img_size, train):
     if train:
         return transforms.Compose([
-            transforms.RandomResizedCrop(img_size),
+            # Default RandomResizedCrop scale floor is 0.08 — on fine-grained birds
+            # that crops away the subject and turns labels into noise. Keep >=50%.
+            transforms.RandomResizedCrop(img_size, scale=(0.5, 1.0)),
             transforms.RandomHorizontalFlip(),
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2),
             transforms.ToTensor(),
             transforms.Normalize(MEAN, STD),
         ])
