@@ -1,0 +1,35 @@
+seed: 42
+
+dataset:
+  root: data/CUB_200_2011
+  num_classes: 200
+  img_size: 224
+  batch_size: 32      # safe for 8 GB GPU with AMP
+  num_workers: 4
+
+teacher:
+  arch: resnet50
+  weights_path: weights/resnet50_imagenet.pth
+  epochs: 60
+  lr: 1.0e-4
+  weight_decay: 1.0e-4
+  label_smoothing: 0.1
+  patience: 10          # early-stop after N epochs without val_top1 improvement
+  checkpoint: results/teacher_best.pth   # saved after train_teacher.py
+
+student:
+  arch: mobilenetv2
+  weights_path: weights/mobilenetv2_imagenet.pth
+  epochs: 100
+  lr: 1.0e-4            # fine-tuning a *pretrained* backbone: 1e-3 was 10x too hot
+  weight_decay: 1.0e-4
+  warmup_epochs: 5      # linear LR warmup avoids destroying pretrained weights early
+  label_smoothing: 0.1  # regularises the head, guards against overfitting
+  patience: 15          # early-stop after N epochs without val_top1 improvement
+
+distillation:
+  temperature: 4       # Week 3 default; sweep with --temperature 2/4/8
+  alpha: 0.7           # weight on KD loss
+  beta: 0.3            # weight on feature loss
+  lambda_d: 25.0       # RKD distance weight
+  lambda_a: 50.0       # RKD angle weight
